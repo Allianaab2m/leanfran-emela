@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      # Builds the emitter and the examples, and checks every proof.
+      - uses: leanprover/lean-action@v1
+      - uses: emela-lang/setup-emela@v1
+        with:
+          version: 0.28.2
+      # `emela test` runs on the js target by default.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: emela pome install
+        working-directory: emela
+      # Regenerates the Emela modules, fails if they differ from the committed ones, and runs
+      # `emela test`.
+      - run: make check

@@ -1,6 +1,16 @@
 # leanfran-emela
 
-Write a function and its proofs in Lean 4, and generate it as an Emela module.
+[![CI](https://github.com/Allianaab2m/leanfran-emela/actions/workflows/ci.yml/badge.svg)](https://github.com/Allianaab2m/leanfran-emela/actions/workflows/ci.yml)
+
+Write a function and its proofs in Lean 4, and generate it as an [Emela](https://github.com/emela-lang/emela)
+module.
+
+This is an Emela backend in the manner of [leanfran](https://github.com/conao3/lean-leanfran), which
+brings Lean 4 to Rust, Python, TypeScript, Clojure, PHP and Go. It is a separate project, not part
+of leanfran. The emitter follows the structure of leanfran's Clojure backend
+(`langs/Clojure/LeanClj/EmitClj.lean`): the collection of IR declarations, the detection of tail
+calls, and the expansion of join points that are jumped to once are adapted from it. leanfran is
+licensed under Apache-2.0.
 
 The emitter reads Lean's IR (`Lean.IR.Decl`) and writes Emela that calls a small runtime written in
 Emela. The first use is as a test oracle: a model proved in Lean is generated into Emela, and
@@ -29,11 +39,12 @@ through `Std.Dynamic`: the Emela side with derived `Encode` and `Decode`, the Le
 
 ## Use
 
-Requires Lean 4.35.0 (through elan) and emela.
+Requires Lean 4.35.0 (through elan) and emela 0.28.2. Run `emela pome install` in `emela/` once.
 
 ```sh
 make gen    # regenerate the Emela modules
 make test   # regenerate, then run the Emela tests
+make check  # also fail if the generated modules differ from the committed ones (as CI does)
 ```
 
 ## Supported so far
