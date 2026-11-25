@@ -1,3 +1,18 @@
+/-
+Copyright 2026 Alliana
+SPDX-License-Identifier: Apache-2.0
+
+Portions of this file are adapted from leanfran (https://github.com/conao3/lean-leanfran, commit
+07d4f2a), `langs/Clojure/LeanClj/EmitClj.lean`, licensed under the Apache License, Version 2.0.
+
+- `tyOf` and `registerType` follow the original's `descOf`: the fields of a constructor are read
+  with `Lean.Compiler.LCNF.getCtorLayout` and `forallTelescopeReducing`. They are rewritten to
+  produce Emela types, `LeanRt.Desc` expressions and derived enums instead of Clojure
+  marshalling descriptors.
+- `publicSig` follows the original's function of the same name, without the support for `IO`.
+- The rest of the file is new.
+-/
+
 import Lean
 
 /-! # Lean types at the boundary

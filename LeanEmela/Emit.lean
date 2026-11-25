@@ -1,3 +1,19 @@
+/-
+Copyright 2026 Alliana
+SPDX-License-Identifier: Apache-2.0
+
+Portions of this file are adapted from leanfran (https://github.com/conao3/lean-leanfran, commit
+07d4f2a), `langs/Clojure/LeanClj/EmitClj.lean`, licensed under the Apache License, Version 2.0.
+
+- Taken with few changes: `skipRc`, `tailCallOf?`, `bodyCallees` and `collect` (`collect` also
+  skips the externs that the runtime implements).
+- Rewritten for Emela from the original's design: `mangle`, `snake` (from `kebab`), `jumpCounts`
+  (from `joinPoints`), `emitExpr`, `emitPap` and `emitBody`. They write Emela text instead of
+  Clojure forms, make a join point a local fn instead of `letfn`, and drop the original's
+  trampolines and `loop`/`recur`.
+- The rest of the file is new.
+-/
+
 import Lean
 import LeanEmela.Types
 

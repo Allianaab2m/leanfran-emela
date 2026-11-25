@@ -1,0 +1,8 @@
+leanfran-emela
+Copyright 2026 Alliana
+
+This product includes software adapted from leanfran
+(https://github.com/conao3/lean-leanfran, commit 07d4f2a8ff5653eb7dd61c4d8b0e872580c9466a),
+licensed under the Apache License, Version 2.0. The adapted parts are in
+LeanEmela/Emit.lean and LeanEmela/Types.lean; the header of each file names them and states
+what was changed.

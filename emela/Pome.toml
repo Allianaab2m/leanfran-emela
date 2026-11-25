@@ -3,6 +3,7 @@ name = "github.com/Allianaab2m/leanfran-emela/emela"
 version = "0.0.0"
 emela = "0.28.0"
 module = "LeanfranEmela"
+license = "Apache-2.0"
 
 [dev-dependencies]
 "github.com/emela-lang/brix" = "v0.4.0"

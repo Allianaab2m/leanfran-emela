@@ -9,8 +9,8 @@ This is an Emela backend in the manner of [leanfran](https://github.com/conao3/l
 brings Lean 4 to Rust, Python, TypeScript, Clojure, PHP and Go. It is a separate project, not part
 of leanfran. The emitter follows the structure of leanfran's Clojure backend
 (`langs/Clojure/LeanClj/EmitClj.lean`): the collection of IR declarations, the detection of tail
-calls, and the expansion of join points that are jumped to once are adapted from it. leanfran is
-licensed under Apache-2.0.
+calls, and the expansion of join points that are jumped to once are adapted from it (see
+[License](#license)).
 
 The emitter reads Lean's IR (`Lean.IR.Decl`) and writes Emela that calls a small runtime written in
 Emela. The first use is as a test oracle: a model proved in Lean is generated into Emela, and
@@ -58,3 +58,10 @@ make check  # also fail if the generated modules differ from the committed ones 
 
 Not yet: `String`, the rest of `Array`, `UInt*`, `Float`, `IO`, constructors with scalar fields, arbitrary
 precision `Nat`.
+
+## License
+
+[Apache License 2.0](LICENSE). Parts of `LeanEmela/Emit.lean` and `LeanEmela/Types.lean` are
+adapted from [leanfran](https://github.com/conao3/lean-leanfran), which is also licensed under the
+Apache License 2.0. [NOTICE](NOTICE) and the header of each of those files say which parts, and
+what was changed.
