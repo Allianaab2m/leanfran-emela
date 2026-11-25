@@ -1,0 +1,49 @@
+# The search tree of `Examples/Tree.lean`, generated into `TreeModel`, against `Std.Set`.
+#
+# Proved in Lean: an inserted key is found (`find?_insert_self`), and the keys of `fromList xs`
+# are exactly the elements of `xs` (`mem_toList_fromList`). Not proved, and checked here: the
+# keys come out in order and without repeats, as `Set.to_list` gives them.
+
+import Brix.Pbt.Gen
+import Brix.Pbt.Gen.{Gen}
+import Brix.Pbt.Property
+import Std.Set
+import TreeModel
+import TreeModel.{Tree, Leaf, Node}
+
+fn keys() -> Gen[List[Int]] {
+  Gen.list(Gen.int_between(0, 50))
+}
+
+@test
+fn the_keys_are_those_of_a_set() {
+  Property.check(keys(), |xs| {
+    assert TreeModel.to_list(TreeModel.from_list(xs)) == Set.from_list(xs).to_list()
+  })
+}
+
+@test
+fn find_agrees_with_contains() {
+  Property.check(Gen.pair(keys(), Gen.int_between(0, 50)), |(xs, x)| {
+    expected = if Set.from_list(xs).contains(x) { Some(x) } else { None }
+    assert TreeModel.find(TreeModel.from_list(xs), x) == expected
+  })
+}
+
+@test
+fn insert_agrees_with_set_insert() {
+  Property.check(Gen.pair(keys(), Gen.int_between(0, 50)), |(xs, x)| {
+    t = TreeModel.insert(TreeModel.from_list(xs), x)
+    assert TreeModel.to_list(t) == Set.from_list(xs).insert(x).to_list()
+    assert TreeModel.find(t, x) == Some(x)
+  })
+}
+
+@test
+fn a_tree_built_in_emela_crosses_the_boundary() {
+  t = Node(Node(Leaf, 1, Leaf), 2, Node(Leaf, 3, Leaf))
+  assert TreeModel.to_list(t) == [1, 2, 3]
+  assert TreeModel.insert(t, 0) == Node(Node(Node(Leaf, 0, Leaf), 1, Leaf), 2, Node(Leaf, 3, Leaf))
+  assert TreeModel.find(t, 3) == Some(3)
+  assert TreeModel.find(t, 4) == None
+}

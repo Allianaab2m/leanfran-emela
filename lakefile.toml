@@ -1,0 +1,9 @@
+name = "LeanEmela"
+version = "0.1.0"
+defaultTargets = ["LeanEmela", "Examples"]
+
+[[lean_lib]]
+name = "LeanEmela"
+
+[[lean_lib]]
+name = "Examples"

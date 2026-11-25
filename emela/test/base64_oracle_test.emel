@@ -1,0 +1,78 @@
+# `Std.Bytes.to_base64` and `from_base64` against the model in `Examples/Base64.lean`, generated
+# into `Base64Model`. The model is proved to satisfy `decode (encode bs) = some bs` and
+# `decode cs = some bs → encode bs = cs`; here the standard library must give the same answers on
+# every input.
+
+import Brix.Pbt.Gen
+import Brix.Pbt.Gen.{Gen}
+import Brix.Pbt.Property
+import Std.Bytes.{Bytes}
+import Base64Model
+
+fn bytes_of(xs: List[Int]) -> Bytes {
+  Bytes.from_list(xs) match {
+    Some(b) -> b
+    None    -> panic("not bytes: #{xs}")
+  }
+}
+
+fn text_of(cs: List[Int]) -> String {
+  cs.map(|c| String.from_code_point(c).or("")).join("")
+}
+
+fn bytes() -> Gen[List[Int]] {
+  Gen.list(Gen.int_between(0, 255))
+}
+
+# Mostly the alphabet, with `=` and a few characters outside it.
+fn symbol(i: Int) -> Int {
+  if i < 26 {
+    0x41 + i
+  } else if i < 52 {
+    0x61 + i - 26
+  } else if i < 62 {
+    0x30 + i - 52
+  } else if i == 62 {
+    0x2B
+  } else if i == 63 {
+    0x2F
+  } else if i < 70 {
+    0x3D
+  } else if i == 70 {
+    0x20
+  } else if i == 71 {
+    0x2D
+  } else {
+    0xE9
+  }
+}
+
+# Lists of symbols, cut to a multiple of 4 three times in four.
+fn texts() -> Gen[List[Int]] {
+  Gen.map(Gen.pair(Gen.list(Gen.int_between(0, 72)), Gen.int_between(0, 3)), |(xs, k)| {
+    cs = xs.map(symbol)
+    if k == 0 { cs } else { cs.take(cs.length() - cs.length() % 4) }
+  })
+}
+
+@test
+fn to_base64_agrees_with_the_model() {
+  Property.check(bytes(), |xs| {
+    assert Bytes.to_base64(bytes_of(xs)).code_points() == Base64Model.encode(xs)
+  })
+}
+
+@test
+fn from_base64_agrees_with_the_model_on_any_text() {
+  Property.check(texts(), |cs| {
+    assert Bytes.from_base64(text_of(cs)).map(|b| b.to_list()) == Base64Model.decode(cs)
+  })
+}
+
+@test
+fn from_base64_agrees_with_the_model_on_encodings() {
+  Property.check(bytes(), |xs| {
+    cs = Base64Model.encode(xs)
+    assert Bytes.from_base64(text_of(cs)).map(|b| b.to_list()) == Base64Model.decode(cs)
+  })
+}

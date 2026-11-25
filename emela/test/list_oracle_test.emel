@@ -1,0 +1,71 @@
+# Emela's `List` against Lean's, at natural numbers (`Examples/List.lean`, generated into
+# `ListModel`).
+#
+# The laws that `tests/laws/test/list_test.emel` in the Emela repository checks on samples are
+# theorems about the model:
+#
+# | Law | Theorem |
+# |---|---|
+# | `reverse(reverse(xs)) == xs` | `reverse_reverse` |
+# | `length(reverse(xs)) == length(xs)` | `length_reverse` |
+# | `append(xs, []) == xs`, `append([], xs) == xs` | `append_nil`, `nil_append` |
+# | `length(append(xs, ys)) == length(xs) + length(ys)` | `length_append` |
+# | `reverse(append(xs, ys)) == append(reverse(ys), reverse(xs))` | `reverse_append` |
+# | `append(take(xs, n), drop(xs, n)) == xs` | `take_append_drop` |
+# | `sort(sort(xs)) == sort(xs)`, `length(sort(xs)) == length(xs)` | `sort_sort`, `length_sort` |
+#
+# Here Emela's functions must give the same results as the model, so the laws hold for them on
+# these inputs too.
+
+import Brix.Pbt.Gen
+import Brix.Pbt.Gen.{Gen}
+import Brix.Pbt.Property
+import ListModel
+
+fn naturals() -> Gen[List[Int]] {
+  Gen.list(Gen.int_between(0, 1000))
+}
+
+@test
+fn reverse_agrees_with_the_model() {
+  Property.check(naturals(), |xs| {
+    assert List.reverse(xs) == ListModel.reverse(xs)
+  })
+}
+
+@test
+fn append_agrees_with_the_model() {
+  Property.check(Gen.pair(naturals(), naturals()), |(xs, ys)| {
+    assert List.append(xs, ys) == ListModel.append(xs, ys)
+  })
+}
+
+@test
+fn take_and_drop_agree_with_the_model() {
+  Property.check(Gen.pair(naturals(), Gen.int_between(0, 30)), |(xs, n)| {
+    assert List.take(xs, n) == ListModel.take(xs, n)
+    assert List.drop(xs, n) == ListModel.drop(xs, n)
+  })
+}
+
+@test
+fn length_agrees_with_the_model() {
+  Property.check(naturals(), |xs| {
+    assert List.length(xs) == ListModel.length(xs)
+  })
+}
+
+@test
+fn sort_agrees_with_the_model() {
+  Property.check(naturals(), |xs| {
+    assert List.sort(xs) == ListModel.sort(xs)
+  })
+}
+
+# Few distinct values, so that equal elements meet often.
+@test
+fn sort_agrees_with_the_model_with_repeats() {
+  Property.check(Gen.list(Gen.int_between(0, 3)), |xs| {
+    assert List.sort(xs) == ListModel.sort(xs)
+  })
+}

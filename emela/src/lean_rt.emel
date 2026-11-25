@@ -1,0 +1,384 @@
+# The runtime of code generated from Lean IR.
+#
+# Every Lean value is an `Obj`. Lean's IR is untyped above the level of scalars, so the generated
+# functions take and return `Obj` only. Reference counts are not kept: memory is managed by the
+# host, and `is_shared` always answers "shared", so the branches that update an object in place
+# are never taken.
+#
+# `Nat` is an Int64 for now: an operation whose result does not fit is a defect, not a wrong
+# value.
+
+import Std.Array.{Array}
+import Std.Dynamic
+import Std.Dynamic.{Dynamic, DecodeError, Encode, Decode}
+import Std.Dynamic.Number
+
+pub enum Obj {
+  ## A `Nat`, a scalar (`UInt8`, `Bool`, ...) or a constructor without fields, by its index.
+  Num(Int64)
+  ## A constructor with fields: its index among the constructors of its type, and its fields.
+  Ctor(Int, Array[Obj])
+  ## A function applied to fewer arguments than it takes: its arity, the function, and the
+  ## arguments given so far.
+  Pap(Int, fn(List[Obj]) -> Obj, List[Obj])
+  ## An argument that the compiler erased (a type or a proof).
+  Erased
+  ## A Lean `Array`: its size, and its elements from the last to the first, so that `push` does
+  ## not copy.
+  Arr(Int, List[Obj])
+}
+
+pub fn nat(n: Int64) -> Obj {
+  Num(n)
+}
+
+pub fn erased() -> Obj {
+  Erased
+}
+
+pub fn unreachable() -> Obj {
+  panic("leanfran-emela: unreachable code was reached")
+}
+
+pub fn unsupported(what: String) -> Obj {
+  panic("leanfran-emela: not supported: #{what}")
+}
+
+## Always "shared" (1): the generated code then copies instead of updating in place.
+pub fn is_shared(_o: Obj) -> Obj {
+  Num(1)
+}
+
+pub fn ctor(tag: Int, fields: List[Obj]) -> Obj {
+  if fields.is_empty() { Num(Int64.from_int(tag)) } else { Ctor(tag, Array.from_list(fields)) }
+}
+
+## The constructor index of `o`, or the value of a scalar.
+pub fn tag(o: Obj) -> Int {
+  o match {
+    Num(n)     -> Int64.to_int(n)
+    Ctor(t, _) -> t
+    _          -> panic("leanfran-emela: tag of a value that is not a constructor")
+  }
+}
+
+pub fn proj(o: Obj, i: Int) -> Obj {
+  o match {
+    Ctor(_, fields) -> fields.get(i) match {
+      Some(x) -> x
+      None    -> panic("leanfran-emela: field #{i} out of range")
+    }
+    _ -> panic("leanfran-emela: field #{i} of a value without fields")
+  }
+}
+
+## The `i`th argument given to a function made by `pap`.
+pub fn arg(args: List[Obj], i: Int) -> Obj {
+  args.get(i) match {
+    Some(x) -> x
+    None    -> panic("leanfran-emela: argument #{i} missing")
+  }
+}
+
+pub fn pap(arity: Int, f: fn(List[Obj]) -> Obj fails {} uses {}, args: List[Obj]) -> Obj {
+  Pap(arity, f, args)
+}
+
+## Applies the closure `f` to `args`: too few arguments make a new closure, and extra ones are
+## applied to the result.
+pub fn apply(f: Obj, args: List[Obj]) -> Obj {
+  f match {
+    Pap(arity, g, given) -> {
+      all = given.append(args)
+      n = all.length()
+      if n < arity {
+        Pap(arity, g, all)
+      } else if n == arity {
+        g(all)
+      } else {
+        apply(g(all.take(arity)), all.drop(arity))
+      }
+    }
+    _ -> panic("leanfran-emela: application of a value that is not a function")
+  }
+}
+
+# Nat
+
+fn num(o: Obj) -> Int64 {
+  o match {
+    Num(n) -> n
+    _      -> panic("leanfran-emela: a Nat was expected")
+  }
+}
+
+fn bool(b: Bool) -> Obj {
+  if b { Num(1) } else { Num(0) }
+}
+
+fn overflow() -> Obj {
+  panic("leanfran-emela: Nat does not fit in Int64")
+}
+
+pub fn nat_add(a: Obj, b: Obj) -> Obj {
+  r = num(a) + num(b)
+  if r < 0 { overflow() } else { Num(r) }
+}
+
+pub fn nat_sub(a: Obj, b: Obj) -> Obj {
+  x = num(a)
+  y = num(b)
+  if x < y { Num(0) } else { Num(x - y) }
+}
+
+pub fn nat_mul(a: Obj, b: Obj) -> Obj {
+  x = num(a)
+  y = num(b)
+  r = x * y
+  if x != 0 && (r < 0 || r / x != y) { overflow() } else { Num(r) }
+}
+
+pub fn nat_div(a: Obj, b: Obj) -> Obj {
+  y = num(b)
+  if y == 0 { Num(0) } else { Num(num(a) / y) }
+}
+
+pub fn nat_mod(a: Obj, b: Obj) -> Obj {
+  y = num(b)
+  if y == 0 { a } else { Num(num(a) % y) }
+}
+
+pub fn nat_dec_eq(a: Obj, b: Obj) -> Obj {
+  bool(num(a) == num(b))
+}
+
+pub fn nat_dec_lt(a: Obj, b: Obj) -> Obj {
+  bool(num(a) < num(b))
+}
+
+pub fn nat_dec_le(a: Obj, b: Obj) -> Obj {
+  bool(num(a) <= num(b))
+}
+
+pub fn nat_shift_right(a: Obj, b: Obj) -> Obj {
+  Num(Int64.shift_right(num(a), Int64.to_int(Int64.min(num(b), 64))))
+}
+
+pub fn nat_shift_left(a: Obj, b: Obj) -> Obj {
+  x = num(a)
+  by = num(b)
+  if x == 0 {
+    a
+  } else if by >= 63 {
+    overflow()
+  } else {
+    r = Int64.shift_left(x, Int64.to_int(by))
+    if Int64.shift_right(r, Int64.to_int(by)) != x { overflow() } else { Num(r) }
+  }
+}
+
+pub fn nat_land(a: Obj, b: Obj) -> Obj {
+  Num(Int64.bit_and(num(a), num(b)))
+}
+
+pub fn nat_lor(a: Obj, b: Obj) -> Obj {
+  Num(Int64.bit_or(num(a), num(b)))
+}
+
+pub fn nat_xor(a: Obj, b: Obj) -> Obj {
+  Num(Int64.bit_xor(num(a), num(b)))
+}
+
+# Array
+#
+# The externs take every argument of the IR call, erased ones included.
+
+pub fn array_mk_empty(_t: Obj, _capacity: Obj) -> Obj {
+  Arr(0, [])
+}
+
+pub fn array_push(_t: Obj, a: Obj, x: Obj) -> Obj {
+  a match {
+    Arr(n, rev) -> Arr(n + 1, [x, ..rev])
+    _           -> panic("leanfran-emela: an Array was expected")
+  }
+}
+
+pub fn array_to_list(_t: Obj, a: Obj) -> Obj {
+  a match {
+    Arr(_, rev) -> rev.fold(from: ctor(0, []), f: |acc, x| ctor(1, [x, acc]))
+    _           -> panic("leanfran-emela: an Array was expected")
+  }
+}
+
+# Conversions for callers
+
+pub fn of_nat(n: Int) -> Obj {
+  if n < 0 { panic("leanfran-emela: a Nat cannot be negative: #{n}") } else { Num(Int64.from_int(n)) }
+}
+
+pub fn to_nat(o: Obj) -> Int {
+  Int64.to_int(num(o))
+}
+
+## A Lean `List`: `nil` is constructor 0 and `cons` is constructor 1.
+pub fn of_list(xs: List[Obj]) -> Obj {
+  xs.reverse().fold(from: ctor(0, []), f: |acc, x| ctor(1, [x, acc]))
+}
+
+pub fn to_list(o: Obj) -> List[Obj] {
+  fn onto(o: Obj, acc: List[Obj]) -> List[Obj] {
+    if tag(o) == 0 { acc.reverse() } else { onto(proj(o, 1), [proj(o, 0), ..acc]) }
+  }
+  onto(o, [])
+}
+
+## A Lean `Option`: `none` is constructor 0 and `some` is constructor 1.
+pub fn to_option(o: Obj) -> Option[Obj] {
+  if tag(o) == 0 { None } else { Some(proj(o, 0)) }
+}
+
+# Values of Emela types
+#
+# A generated public function takes and returns values of Emela types. They cross into `Obj`
+# through `Dynamic`: the Emela side by its `Encode` and `Decode`, and the Lean side by a `Desc` of
+# the Lean type, which the emitter writes from that type.
+
+## The Lean type of a value, as far as converting it from and to `Dynamic` needs.
+pub enum Desc {
+  ## `Nat`, as a Number.
+  DNat
+  ## `Bool`, a scalar 0 or 1.
+  DBool
+  ## `List`: Items.
+  DList(Desc)
+  ## `Option`: Null for `none`, the value for `some`.
+  DOption(Desc)
+  ## An inductive type, written as a derived enum is (`Std.Dynamic.variant`). The constructors are
+  ## behind a function so that a type can contain itself.
+  DType(fn() -> List[DCtor])
+}
+
+## A constructor: the tag of its Emela variant, its index among the Lean constructors, and its
+## fields in the order of the object.
+pub type DCtor(tag: String, index: Int, fields: List[Desc])
+
+pub fn to_dynamic(o: Obj, d: Desc) -> Dynamic {
+  d match {
+    DNat      -> Dynamic.Number(Number.from_int64(num(o)))
+    DBool     -> Dynamic.Bool(tag(o) == 1)
+    DList(e)  -> Dynamic.Items(to_list(o).map(|x| to_dynamic(x, e)))
+    DOption(e) -> if tag(o) == 0 { Dynamic.Null } else { to_dynamic(proj(o, 0), e) }
+    DType(ctors) -> {
+      c = ctor_by_index(ctors(), tag(o))
+      if c.fields.is_empty() {
+        Dynamic.variant(c.tag, None)
+      } else {
+        fields = c.fields.zip(List.range(0, c.fields.length())).map(|(e, i)| to_dynamic(proj(o, i), e))
+        Dynamic.variant(c.tag, Some(Dynamic.Items(fields)))
+      }
+    }
+  }
+}
+
+fn ctor_by_index(ctors: List[DCtor], i: Int) -> DCtor {
+  ctors.find(|c| c.index == i) match {
+    Some(c) -> c
+    None    -> panic("leanfran-emela: no constructor with index #{i}")
+  }
+}
+
+pub fn from_dynamic(v: Dynamic, d: Desc) -> Obj fails DecodeError {
+  d match {
+    DNat -> {
+      n = Dynamic.int64(v)
+      if n < 0 {
+        fail DecodeError(expected: "a natural number", actual: v, path: [])
+      } else {
+        Num(n)
+      }
+    }
+    DBool    -> bool(Dynamic.bool(v))
+    DList(e) -> v match {
+      Dynamic.Items(xs) -> of_list(from_items(xs, e, []))
+      _                 -> fail DecodeError(expected: "items", actual: v, path: [])
+    }
+    DOption(e) -> v match {
+      Dynamic.Null -> ctor(0, [])
+      _            -> ctor(1, [from_dynamic(v, e)])
+    }
+    DType(ctors) -> {
+      t = Dynamic.tag(v)
+      c = ctors().find(|c| c.tag == t) match {
+        Some(c) -> c
+        None    -> fail DecodeError(expected: "a constructor", actual: v, path: [])
+      }
+      if c.fields.is_empty() {
+        ctor(c.index, [])
+      } else {
+        contents = Dynamic.lookup(v, "value") match {
+          Some(x) -> x
+          None    -> fail DecodeError(expected: "value", actual: v, path: [])
+        }
+        ctor(c.index, from_fields(Dynamic.items(contents, c.fields.length()).zip(c.fields), []))
+      }
+    }
+  }
+}
+
+fn from_items(xs: List[Dynamic], e: Desc, acc: List[Obj]) -> List[Obj] fails DecodeError {
+  xs match {
+    []          -> acc.reverse()
+    [x, ..rest] -> from_items(rest, e, [from_dynamic(x, e), ..acc])
+  }
+}
+
+fn from_fields(xs: List[(Dynamic, Desc)], acc: List[Obj]) -> List[Obj] fails DecodeError {
+  xs match {
+    []               -> acc.reverse()
+    [(x, e), ..rest] -> from_fields(rest, [from_dynamic(x, e), ..acc])
+  }
+}
+
+## The Lean value of `a`, a value of the Emela type that `d` describes.
+pub fn input[A: Encode](a: A, d: Desc) -> Obj {
+  from_dynamic(a.to_dynamic(), d) escape {
+    DecodeError(expected:, actual:, path: _) -> panic(
+      "leanfran-emela: an argument does not fit its Lean type: expected #{expected}, found #{actual}",
+    )
+  }
+}
+
+## The Emela value of `o`, a Lean value of the type that `d` describes.
+pub fn output[A: Decode](o: Obj, d: Desc) -> A {
+  v = to_dynamic(o, d)
+  Decode.from_dynamic(v) escape {
+    DecodeError(expected:, actual:, path: _) -> panic(
+      "leanfran-emela: a result does not fit its Emela type: expected #{expected}, found #{actual}",
+    )
+  }
+}
+
+pub fn d_nat() -> Desc {
+  DNat
+}
+
+pub fn d_bool() -> Desc {
+  DBool
+}
+
+pub fn d_list(e: Desc) -> Desc {
+  DList(e)
+}
+
+pub fn d_option(e: Desc) -> Desc {
+  DOption(e)
+}
+
+pub fn d_type(ctors: fn() -> List[DCtor] fails {} uses {}) -> Desc {
+  DType(ctors)
+}
+
+pub fn d_ctor(tag: String, index: Int, fields: List[Desc]) -> DCtor {
+  DCtor(tag:, index:, fields:)
+}
